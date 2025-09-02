@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오늘 뭐 먹지? (카카오 ver.)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        /* 스크롤바 디자인 */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        /* 룰렛 스타일 */
+        #roulette-wheel {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            overflow: hidden;
+            transition: transform 4s cubic-bezier(0.25, 0.1, 0.25, 1);
+            border: 5px solid #333;
+        }
+        .roulette-wedge {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            clip-path: polygon(50% 50%, 100% 50%, 100% 0, 50% 0);
+            transform-origin: 50% 50%;
+        }
+        .roulette-text {
+            position: absolute;
+            top: 20%;
+            left: 55%;
+            transform: rotate(45deg);
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            max-width: 100px;
+            text-align: center;
+        }
+        #roulette-pointer {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 30px solid #c0392b;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <main class="flex flex-col items-center w-full min-h-screen p-4 md:p-8">
+        <div class="w-full max-w-6xl p-6 md:p-8 space-y-6 bg-white rounded-xl shadow-lg">
+            <h1 class="text-3xl font-bold text-center">오늘 뭐 먹지? (카카오 ver.)</h1>
+            
+            <div class="flex flex-col md:flex-row gap-6">
+                <!-- 지도/로드뷰 영역 -->
+                <div class="relative w-full h-80 md:h-auto md:min-h-[600px] md:flex-grow rounded-lg overflow-hidden border shadow-sm">
+                    <div id="map" class="w-full h-full"></div>
+                    <div id="roadview" class="w-full h-full hidden"></div>
+                    <div id="view-toggle-button-container" class="absolute top-3 right-3 z-10 hidden">
+                        <button id="view-toggle-button" class="bg-white/80 backdrop-blur-sm p-2 rounded-full shadow-md">
+                            <svg id="toggle-icon-roadview" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg id="toggle-icon-map" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 컨트롤 및 정보 영역 -->
+                <div class="w-full md:w-1/3 flex flex-col items-center md:justify-start space-y-4">
+                    <div class="w-full max-w-sm flex gap-2">
+                        <button id="recommend-btn" class="flex-1 bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition disabled:bg-gray-400">음식점 추천</button>
+                        <button id="roulette-btn" class="flex-1 bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600 transition disabled:bg-gray-400">음식점 룰렛</button>
+                        <button id="filter-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition">필터</button>
+                    </div>
+                    
+                    <div class="w-full max-w-sm space-y-4">
+                        <div id="restaurant-list-container" class="space-y-2 max-h-[480px] overflow-y-auto pr-2 custom-scrollbar">
+                            <div id="list-placeholder" class="w-full flex items-center justify-center h-40 text-gray-500 border-2 border-dashed rounded-lg">
+                                <p>음식점을 추천받아보세요!</p>
+                            </div>
+                        </div>
+                        
+                        <div id="details-card-container"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 필터 모달 -->
+        <div id="filter-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 hidden">
+            <div class="bg-white rounded-lg p-6 w-full max-w-md space-y-4">
+                <h2 class="text-xl font-bold">검색 필터 설정</h2>
+                <div>
+                    <label class="text-lg font-semibold">음식 종류</label>
+                    <div id="category-options" class="grid grid-cols-2 gap-4 pt-2"></div>
+                    <div class="flex items-center space-x-2 mt-4 pt-4 border-t">
+                        <input type="checkbox" id="select-all-categories">
+                        <label for="select-all-categories" class="font-semibold">모두 선택</label>
+                    </div>
+                </div>
+                <div class="border-t"></div>
+                <div>
+                    <label class="text-lg font-semibold">검색 반경</label>
+                    <div id="distance-options" class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2"></div>
+                </div>
+                <div class="border-t"></div>
+                <div>
+                    <label class="text-lg font-semibold">정렬 방식</label>
+                    <div id="sort-options" class="flex gap-4 pt-2"></div>
+                </div>
+                <div class="border-t"></div>
+                <div>
+                    <label for="result-count-slider" class="text-lg font-semibold">검색 개수: <span id="result-count-label">5</span>개</label>
+                    <input type="range" id="result-count-slider" min="5" max="15" value="5" class="w-full mt-2">
+                </div>
+                <div class="flex justify-end">
+                    <button id="filter-close-btn" class="bg-blue-500 text-white font-bold py-2 px-4 rounded-lg">완료</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 룰렛 모달 -->
+        <div id="roulette-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 hidden">
+            <div class="bg-white rounded-lg p-6 w-full max-w-md space-y-6 flex flex-col items-center">
+                 <h2 class="text-2xl font-bold text-center">룰렛을 돌려 오늘 점심을 선택하세요!</h2>
+                 <div class="relative">
+                    <div id="roulette-wheel"></div>
+                    <div id="roulette-pointer"></div>
+                </div>
+                <button id="spin-btn" class="bg-red-500 text-white font-bold py-2 px-6 rounded-lg text-lg">돌리기</button>
+            </div>
+        </div>
+    </main>
+
+    <script type="module">
+        // --- 전역 변수 및 상태 관리 ---
+        let kakaoMap = null;
+        let roadviewInstance = null;
+        let markers = [];
+        let polyline = null;
+        let userLocation = null;
+        let restaurantList = [];
+        let selectedRecommendation = null;
+        let currentViewMode = 'map'; // 'map' or 'roadview'
+
+        const KAKAO_JS_KEY = '71133036272591a27a4b879027815bcf'; // 데모용 공개 키입니다. 실제 서비스에서는 환경 변수를 사용하세요.
+
+        // --- DOM 요소 ---
+        const mapContainer = document.getElementById('map');
+        const roadviewContainer = document.getElementById('roadview');
+        const recommendBtn = document.getElementById('recommend-btn');
+        const rouletteBtn = document.getElementById('roulette-btn');
+        const listContainer = document.getElementById('restaurant-list-container');
+        const detailsContainer = document.getElementById('details-card-container');
+        const viewToggleButton = document.getElementById('view-toggle-button');
+        const toggleBtnContainer = document.getElementById('view-toggle-button-container');
+        const toggleIconMap = document.getElementById('toggle-icon-map');
+        const toggleIconRoadview = document.getElementById('toggle-icon-roadview');
+
+        // --- 초기화 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initKakaoMapScript();
+            initFilterModal();
+            addEventListeners();
+        });
+
+        function initKakaoMapScript() {
+            const script = document.createElement('script');
+            script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false&libraries=services`;
+            document.head.appendChild(script);
+            script.onload = () => {
+                kakao.maps.load(() => {
+                    const mapOption = {
+                        center: new kakao.maps.LatLng(36.3504, 127.3845), // 대전시청
+                        level: 5,
+                    };
+                    kakaoMap = new kakao.maps.Map(mapContainer, mapOption);
+                    roadviewInstance = new kakao.maps.Roadview(roadviewContainer);
+                    recommendBtn.disabled = false;
+                    rouletteBtn.disabled = false;
+                });
+            };
+        }
+
+        // --- 이벤트 리스너 ---
+        function addEventListeners() {
+            recommendBtn.addEventListener('click', () => handleRecommend(false));
+            rouletteBtn.addEventListener('click', () => handleRecommend(true));
+            viewToggleButton.addEventListener('click', toggleView);
+
+            // 필터 관련
+            document.getElementById('filter-btn').addEventListener('click', () => document.getElementById('filter-modal').classList.remove('hidden'));
+            document.getElementById('filter-close-btn').addEventListener('click', () => document.getElementById('filter-modal').classList.add('hidden'));
+            document.getElementById('select-all-categories').addEventListener('change', (e) => {
+                document.querySelectorAll('#category-options input[type="checkbox"]').forEach(checkbox => checkbox.checked = e.target.checked);
+            });
+            document.getElementById('result-count-slider').addEventListener('input', (e) => {
+                document.getElementById('result-count-label').textContent = e.target.value;
+            });
+            
+            // 룰렛 관련
+            document.getElementById('spin-btn').addEventListener('click', spinRoulette);
+        }
+
+        // --- 핵심 로직 ---
+        async function handleRecommend(isRoulette) {
+            recommendBtn.disabled = true;
+            rouletteBtn.disabled = true;
+            listContainer.innerHTML = `<div class="w-full flex items-center justify-center h-40 text-gray-500"><p>위치 정보를 가져오는 중...</p></div>`;
+
+            try {
+                const position = await getCurrentLocation();
+                userLocation = new kakao.maps.LatLng(position.coords.latitude, position.coords.longitude);
+                kakaoMap.setCenter(userLocation);
+
+                listContainer.innerHTML = `<div class="w-full flex items-center justify-center h-40 text-gray-500"><p>음식점을 검색하는 중...</p></div>`;
+                
+                const filterOptions = getFilterOptions();
+                const query = filterOptions.categories.length > 0 ? filterOptions.categories.join(',') : '음식점';
+                
+                // [API 호출] 실제 환경에서는 자체 서버의 API 엔드포인트를 호출해야 합니다.
+                // 여기서는 데모를 위해 직접 카카오 API를 호출합니다.
+                const response = await fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?y=${userLocation.getLat()}&x=${userLocation.getLng()}&query=${encodeURIComponent(query)}&radius=${filterOptions.distance}&sort=${filterOptions.sort}&size=${filterOptions.count}`, {
+                    headers: { 'Authorization': `KakaoAK 195a659724128508e192ef03f47e3a24` } // 데모용 REST API 키
+                });
+                const data = await response.json();
+
+                if (!data.documents || data.documents.length === 0) {
+                    alert('주변에 조건에 맞는 음식점을 찾지 못했어요!');
+                    listContainer.innerHTML = `<div id="list-placeholder" class="w-full flex items-center justify-center h-40 text-gray-500 border-2 border-dashed rounded-lg"><p>결과가 없습니다.</p></div>`;
+                    return;
+                }
+                
+                restaurantList = data.documents;
+
+                if (isRoulette) {
+                    if (restaurantList.length < 2) {
+                        alert(`룰렛을 돌리려면 음식점이 2개 이상 필요합니다.`);
+                        renderRestaurantList();
+                        return;
+                    }
+                    setupRoulette(restaurantList);
+                    document.getElementById('roulette-modal').classList.remove('hidden');
+                } else {
+                    renderRestaurantList();
+                }
+
+            } catch (error) {
+                console.error("Error:", error);
+                alert(error.message);
+                listContainer.innerHTML = `<div id="list-placeholder" class="w-full flex items-center justify-center h-40 text-gray-500 border-2 border-dashed rounded-lg"><p>오류가 발생했습니다.</p></div>`;
+            } finally {
+                recommendBtn.disabled = false;
+                rouletteBtn.disabled = false;
+            }
+        }
+        
+        function getCurrentLocation() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error("위치 정보가 지원되지 않습니다."));
+                }
+                navigator.geolocation.getCurrentPosition(resolve, () => reject(new Error("위치 정보를 가져오는 데 실패했습니다.")), {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                });
+            });
+        }
+        
+        function getFilterOptions() {
+            const categories = Array.from(document.querySelectorAll('#category-options input:checked')).map(el => el.value);
+            const distance = document.querySelector('#distance-options input:checked').value;
+            const sort = document.querySelector('#sort-options input:checked').value;
+            const count = document.getElementById('result-count-slider').value;
+            return { categories, distance, sort, count };
+        }
+
+        // --- 렌더링 함수 ---
+        function renderRestaurantList() {
+            clearMap();
+            listContainer.innerHTML = '';
+            
+            restaurantList.forEach(place => {
+                const card = document.createElement('div');
+                card.className = 'p-2 border rounded-lg cursor-pointer hover:border-blue-500 transition';
+                card.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-md">${place.place_name}</h3>
+                        <span class="text-xs text-gray-600">${place.distance}m</span>
+                    </div>
+                    <p class="text-xs text-gray-700">${place.category_name.split(' > ').pop()}</p>
+                `;
+                card.addEventListener('click', () => selectRestaurant(place.id));
+                listContainer.appendChild(card);
+                
+                const marker = new kakao.maps.Marker({
+                    position: new kakao.maps.LatLng(place.y, place.x),
+                    map: kakaoMap,
+                });
+                markers.push(marker);
+            });
+            if (restaurantList.length > 0) {
+                 selectRestaurant(restaurantList[0].id, false); // 첫번째 항목을 기본으로 선택하되 로드뷰로 전환하지 않음
+            }
+        }
+        
+        async function selectRestaurant(placeId, switchToRoadview = true) {
+            selectedRecommendation = restaurantList.find(p => p.id === placeId);
+            
+            // 선택된 카드 스타일 업데이트
+             Array.from(listContainer.children).forEach((card, index) => {
+                if (restaurantList[index].id === placeId) {
+                    card.classList.add('border-blue-500', 'border-2');
+                } else {
+                    card.classList.remove('border-blue-500', 'border-2');
+                }
+            });
+
+            // 지도 중심 이동
+            const moveLatLng = new kakao.maps.LatLng(selectedRecommendation.y, selectedRecommendation.x);
+            kakaoMap.setCenter(moveLatLng);
+
+            // 상세 정보 카드 렌더링 (구글 API 대신 카카오 정보로 대체)
+            detailsContainer.innerHTML = `
+                <div class="p-4 border rounded-lg space-y-2">
+                    <h3 class="text-lg font-bold">${selectedRecommendation.place_name}</h3>
+                    <p class="text-sm text-gray-600">${selectedRecommendation.road_address_name || '주소 정보 없음'}</p>
+                    <a href="${selectedRecommendation.place_url}" target="_blank" class="block w-full text-center bg-yellow-400 text-black font-bold py-2 rounded-lg hover:bg-yellow-500 transition">카카오맵에서 상세보기</a>
+                </div>
+            `;
+            
+            toggleBtnContainer.classList.remove('hidden');
+
+            if (switchToRoadview) {
+                currentViewMode = 'roadview';
+                updateView();
+            } else {
+                currentViewMode = 'map';
+                updateView();
+            }
+        }
+        
+        function updateView() {
+            if (currentViewMode === 'roadview' && selectedRecommendation) {
+                mapContainer.classList.add('hidden');
+                roadviewContainer.classList.remove('hidden');
+                toggleIconMap.classList.remove('hidden');
+                toggleIconRoadview.classList.add('hidden');
+
+                const roadviewClient = new kakao.maps.RoadviewClient();
+                const position = new kakao.maps.LatLng(selectedRecommendation.y, selectedRecommendation.x);
+                roadviewClient.getNearestPanoId(position, 50, (panoId) => {
+                    if (panoId) {
+                        roadviewInstance.setPanoId(panoId, position);
+                    } else {
+                        roadviewContainer.innerHTML = `<div class="flex items-center justify-center h-full bg-gray-100 text-gray-600">로드뷰가 제공되지 않는 위치입니다.</div>`;
+                    }
+                });
+            } else {
+                mapContainer.classList.remove('hidden');
+                roadviewContainer.classList.add('hidden');
+                toggleIconMap.classList.add('hidden');
+                toggleIconRoadview.classList.remove('hidden');
+                kakaoMap.relayout();
+            }
+        }
+        
+        function toggleView() {
+            currentViewMode = currentViewMode === 'map' ? 'roadview' : 'map';
+            updateView();
+        }
+
+        // --- 유틸리티 함수 ---
+        function clearMap() {
+            markers.forEach(m => m.setMap(null));
+            markers = [];
+            if (polyline) polyline.setMap(null);
+            detailsContainer.innerHTML = '';
+            toggleBtnContainer.classList.add('hidden');
+            selectedRecommendation = null;
+        }
+
+        function initFilterModal() {
+            const CATEGORIES = ["한식", "중식", "일식", "양식", "아시아음식", "분식", "패스트푸드", "치킨", "피자", "뷔페", "카페", "술집"];
+            const DISTANCES = [{ value: '500', label: '가까워요' }, { value: '800', label: '적당해요' }, { value: '2000', label: '조금 멀어요' }];
+            const SORTS = [{ value: 'accuracy', label: '랜덤 추천' }, { value: 'distance', label: '가까운 순' }];
+
+            const categoryContainer = document.getElementById('category-options');
+            CATEGORIES.forEach(cat => {
+                categoryContainer.innerHTML += `<div class="flex items-center space-x-2"><input type="checkbox" id="cat-${cat}" value="${cat}"><label for="cat-${cat}">${cat}</label></div>`;
+            });
+
+            const distanceContainer = document.getElementById('distance-options');
+            DISTANCES.forEach((dist, i) => {
+                distanceContainer.innerHTML += `<div class="flex items-center space-x-2"><input type="radio" name="distance" id="dist-${dist.value}" value="${dist.value}" ${i === 1 ? 'checked' : ''}><label for="dist-${dist.value}">${dist.label}</label></div>`;
+            });
+            
+            const sortContainer = document.getElementById('sort-options');
+            SORTS.forEach((sort, i) => {
+                sortContainer.innerHTML += `<div class="flex items-center space-x-2"><input type="radio" name="sort" id="sort-${sort.value}" value="${sort.value}" ${i === 0 ? 'checked' : ''}><label for="sort-${sort.value}">${sort.label}</label></div>`;
+            });
+        }
+        
+        // --- 룰렛 관련 함수 ---
+        function setupRoulette(items) {
+            const wheel = document.getElementById('roulette-wheel');
+            wheel.innerHTML = '';
+            const itemCount = items.length;
+            const angle = 360 / itemCount;
+            const colors = ['#FF6B6B', '#FFD966', '#96F291', '#66D9E8', '#63A4FF', '#f9a8d4'];
+
+            items.forEach((item, i) => {
+                const wedge = document.createElement('div');
+                wedge.className = 'roulette-wedge';
+                wedge.style.backgroundColor = colors[i % colors.length];
+                wedge.style.transform = `rotate(${angle * i}deg)`;
+                
+                const text = document.createElement('div');
+                text.className = 'roulette-text';
+                text.textContent = item.place_name;
+                wedge.appendChild(text);
+
+                wheel.appendChild(wedge);
+            });
+        }
+
+        function spinRoulette() {
+            const spinBtn = document.getElementById('spin-btn');
+            spinBtn.disabled = true;
+
+            const wheel = document.getElementById('roulette-wheel');
+            const itemCount = restaurantList.length;
+            const prizeNumber = Math.floor(Math.random() * itemCount);
+            const angle = 360 / itemCount;
+            
+            const randomOffset = Math.random() * angle - (angle / 2);
+            const targetRotation = (360 * 5) - (prizeNumber * angle) + randomOffset;
+            
+            wheel.style.transform = `rotate(${targetRotation}deg)`;
+
+            setTimeout(() => {
+                document.getElementById('roulette-modal').classList.add('hidden');
+                const winner = restaurantList[prizeNumber];
+                alert(`오늘의 점심은 "${winner.place_name}" 입니다!`);
+                
+                restaurantList = [winner]; // 승자만 남김
+                renderRestaurantList();
+                selectRestaurant(winner.id);
+
+                wheel.style.transition = 'none';
+                wheel.style.transform = 'rotate(0deg)';
+                setTimeout(() => {
+                    wheel.style.transition = 'transform 4s cubic-bezier(0.25, 0.1, 0.25, 1)';
+                    spinBtn.disabled = false;
+                }, 50);
+
+            }, 4500); // 애니메이션 시간 + 0.5초
+        }
+    </script>
+</body>
+</html>
