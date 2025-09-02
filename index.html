@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 네이버 서치어드바이저에서 발급받은 코드를 여기에 붙여넣으세요. -->
+    <meta name="naver-site-verification" content="여기에 네이버 소유확인 코드를 입력하세요"/>
     <title>오늘 뭐 먹지? (카카오 ver.)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
@@ -10,21 +12,10 @@
         body {
             font-family: 'Noto Sans KR', sans-serif;
         }
-        /* 스크롤바 디자인 */
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-        /* 룰렛 스타일 */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #555; }
         #roulette-wheel {
             position: relative;
             width: 300px;
@@ -90,8 +81,8 @@
                 <!-- 컨트롤 및 정보 영역 -->
                 <div class="w-full md:w-1/3 flex flex-col items-center md:justify-start space-y-4">
                     <div class="w-full max-w-sm flex gap-2">
-                        <button id="recommend-btn" class="flex-1 bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition disabled:bg-gray-400">음식점 추천</button>
-                        <button id="roulette-btn" class="flex-1 bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600 transition disabled:bg-gray-400">음식점 룰렛</button>
+                        <button id="recommend-btn" class="flex-1 bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition disabled:bg-gray-400" disabled>지도 로딩중...</button>
+                        <button id="roulette-btn" class="flex-1 bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600 transition disabled:bg-gray-400" disabled>지도 로딩중...</button>
                         <button id="filter-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition">필터</button>
                     </div>
                     
@@ -163,9 +154,11 @@
         let userLocation = null;
         let restaurantList = [];
         let selectedRecommendation = null;
-        let currentViewMode = 'map'; // 'map' or 'roadview'
+        let currentViewMode = 'map';
 
-        const KAKAO_JS_KEY = '71133036272591a27a4b879027815bcf'; // 데모용 공개 키입니다. 실제 서비스에서는 환경 변수를 사용하세요.
+        // [수정] 제공해주신 API 키로 변경했습니다.
+        const KAKAO_JS_KEY = 'b1e093a79b0462697357a22065985ff3';
+        const KAKAO_REST_KEY = '92f1a43539bd8c0acfe24beada269e92';
 
         // --- DOM 요소 ---
         const mapContainer = document.getElementById('map');
@@ -193,13 +186,16 @@
             script.onload = () => {
                 kakao.maps.load(() => {
                     const mapOption = {
-                        center: new kakao.maps.LatLng(36.3504, 127.3845), // 대전시청
+                        center: new kakao.maps.LatLng(36.3504, 127.3845),
                         level: 5,
                     };
                     kakaoMap = new kakao.maps.Map(mapContainer, mapOption);
                     roadviewInstance = new kakao.maps.Roadview(roadviewContainer);
+                    
                     recommendBtn.disabled = false;
+                    recommendBtn.textContent = '음식점 추천';
                     rouletteBtn.disabled = false;
+                    rouletteBtn.textContent = '음식점 룰렛';
                 });
             };
         }
@@ -210,7 +206,6 @@
             rouletteBtn.addEventListener('click', () => handleRecommend(true));
             viewToggleButton.addEventListener('click', toggleView);
 
-            // 필터 관련
             document.getElementById('filter-btn').addEventListener('click', () => document.getElementById('filter-modal').classList.remove('hidden'));
             document.getElementById('filter-close-btn').addEventListener('click', () => document.getElementById('filter-modal').classList.add('hidden'));
             document.getElementById('select-all-categories').addEventListener('change', (e) => {
@@ -219,13 +214,16 @@
             document.getElementById('result-count-slider').addEventListener('input', (e) => {
                 document.getElementById('result-count-label').textContent = e.target.value;
             });
-            
-            // 룰렛 관련
             document.getElementById('spin-btn').addEventListener('click', spinRoulette);
         }
 
         // --- 핵심 로직 ---
         async function handleRecommend(isRoulette) {
+            if (typeof kakao === 'undefined' || !kakao.maps) {
+                alert('지도 API가 아직 로딩 중입니다. 잠시 후 다시 시도해주세요.');
+                return;
+            }
+
             recommendBtn.disabled = true;
             rouletteBtn.disabled = true;
             listContainer.innerHTML = `<div class="w-full flex items-center justify-center h-40 text-gray-500"><p>위치 정보를 가져오는 중...</p></div>`;
@@ -240,10 +238,8 @@
                 const filterOptions = getFilterOptions();
                 const query = filterOptions.categories.length > 0 ? filterOptions.categories.join(',') : '음식점';
                 
-                // [API 호출] 실제 환경에서는 자체 서버의 API 엔드포인트를 호출해야 합니다.
-                // 여기서는 데모를 위해 직접 카카오 API를 호출합니다.
                 const response = await fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?y=${userLocation.getLat()}&x=${userLocation.getLng()}&query=${encodeURIComponent(query)}&radius=${filterOptions.distance}&sort=${filterOptions.sort}&size=${filterOptions.count}`, {
-                    headers: { 'Authorization': `KakaoAK 195a659724128508e192ef03f47e3a24` } // 데모용 REST API 키
+                    headers: { 'Authorization': `KakaoAK ${KAKAO_REST_KEY}` }
                 });
                 const data = await response.json();
 
@@ -323,27 +319,24 @@
                 markers.push(marker);
             });
             if (restaurantList.length > 0) {
-                 selectRestaurant(restaurantList[0].id, false); // 첫번째 항목을 기본으로 선택하되 로드뷰로 전환하지 않음
+                 selectRestaurant(restaurantList[0].id, false);
             }
         }
         
         async function selectRestaurant(placeId, switchToRoadview = true) {
             selectedRecommendation = restaurantList.find(p => p.id === placeId);
             
-            // 선택된 카드 스타일 업데이트
              Array.from(listContainer.children).forEach((card, index) => {
-                if (restaurantList[index].id === placeId) {
+                if (restaurantList[index] && restaurantList[index].id === placeId) {
                     card.classList.add('border-blue-500', 'border-2');
                 } else {
                     card.classList.remove('border-blue-500', 'border-2');
                 }
             });
 
-            // 지도 중심 이동
             const moveLatLng = new kakao.maps.LatLng(selectedRecommendation.y, selectedRecommendation.x);
             kakaoMap.setCenter(moveLatLng);
 
-            // 상세 정보 카드 렌더링 (구글 API 대신 카카오 정보로 대체)
             detailsContainer.innerHTML = `
                 <div class="p-4 border rounded-lg space-y-2">
                     <h3 class="text-lg font-bold">${selectedRecommendation.place_name}</h3>
@@ -466,7 +459,7 @@
                 const winner = restaurantList[prizeNumber];
                 alert(`오늘의 점심은 "${winner.place_name}" 입니다!`);
                 
-                restaurantList = [winner]; // 승자만 남김
+                restaurantList = [winner];
                 renderRestaurantList();
                 selectRestaurant(winner.id);
 
@@ -477,8 +470,9 @@
                     spinBtn.disabled = false;
                 }, 50);
 
-            }, 4500); // 애니메이션 시간 + 0.5초
+            }, 4500);
         }
     </script>
 </body>
 </html>
+
